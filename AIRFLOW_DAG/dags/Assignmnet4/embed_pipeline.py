@@ -48,7 +48,7 @@ default_args = {
     "retries": 0
 }
 dag = DAG(
-    "docling_pdf_embed_pipeline",
+    "docling_embed_pipeline",
     default_args=default_args,
     description="Process a single PDF from S3, embed using docling, store in Pinecone, and export structured data",
     schedule_interval=None,
@@ -62,8 +62,8 @@ def convert_image_to_bytes(image: Image.Image) -> bytes:
         image.save(output, format="PNG")  
         return output.getvalue()
     
-def select_pdf(max_size_mb: float = 1.5) -> str:
-    """Select a single PDF file path from S3 that is below the specified size (1.5 MB default)."""
+def select_pdfs(max_size_mb: float = 1.5) -> List[str]:
+    """Select two PDF file paths from S3 that are below the specified size (1.5 MB default), sorted by name."""
     s3 = boto3.client("s3")
     response = s3.list_objects_v2(Bucket=S3_BUCKET, Prefix="pdfs")
     
@@ -75,13 +75,15 @@ def select_pdf(max_size_mb: float = 1.5) -> str:
         key=lambda x: x["Key"]
     )
     
-    for obj in pdf_objects:
-        if obj["Key"].endswith(".pdf") and obj["Size"] <= max_size_bytes:
-            logger.info(f"Selected PDF: {obj['Key']} with size {obj['Size']} bytes.")
-            return obj["Key"]
+    selected_pdfs = [
+        obj["Key"] for obj in pdf_objects if obj["Key"].endswith(".pdf") and obj["Size"] <= max_size_bytes
+    ][:2]  # Select only the first two suitable PDFs
     
-    logger.warning("No suitable PDF found under the size limit.")
-    return None
+    if selected_pdfs:
+        logger.info(f"Selected PDFs: {selected_pdfs}")
+    else:
+        logger.warning("No suitable PDFs found under the size limit.")
+    return selected_pdfs
 
 def generate_signed_url(pdf_key: str) -> str:
     """Generate a signed URL for a single PDF."""
@@ -194,41 +196,52 @@ def embed_and_store(unprocessed_chunks: List[Dict[str, str]]) -> None:
         raise
 
 with dag:
-    select_pdf_task = PythonOperator(
-        task_id="select_pdf",
-        python_callable=select_pdf,
-    )
+    pdf_keys = select_pdfs()  # Retrieve two PDFs sorted by name
+    if not pdf_keys:
+        raise ValueError("No suitable PDFs found to process.")
+    
+    previous_task = None
+    for i, pdf_key in enumerate(pdf_keys):
+        doc_name = f"Document_{i+1}"
+        
+        generate_signed_url_task = PythonOperator(
+            task_id=f"generate_signed_url_{i+1}",
+            python_callable=generate_signed_url,
+            op_kwargs={"pdf_key": pdf_key},
+        )
 
-    generate_signed_url_task = PythonOperator(
-        task_id="generate_signed_url",
-        python_callable=generate_signed_url,
-        op_kwargs={"pdf_key": select_pdf_task.output},
-    )
+        load_convert_and_export_pdf_task = PythonOperator(
+            task_id=f"load_convert_and_export_pdf_{i+1}",
+            python_callable=load_convert_and_export_pdf,
+            op_kwargs={
+                "url": generate_signed_url_task.output,
+                "doc_name": doc_name
+            },
+        )
 
-    load_convert_and_export_pdf_task = PythonOperator(
-        task_id="load_convert_and_export_pdf",
-        python_callable=load_convert_and_export_pdf,
-        op_kwargs={
-            "url": generate_signed_url_task.output,
-            "doc_name": "Document_1"
-        },
-    )
+        check_existing_embeddings_task = PythonOperator(
+            task_id=f"check_existing_embeddings_{i+1}",
+            python_callable=check_existing_embeddings,
+            op_kwargs={
+                "docs": load_convert_and_export_pdf_task.output,
+                "doc_name": doc_name
+            },
+        )
 
-    check_existing_embeddings_task = PythonOperator(
-        task_id="check_existing_embeddings",
-        python_callable=check_existing_embeddings,
-        op_kwargs={
-            "docs": load_convert_and_export_pdf_task.output,
-            "doc_name": "Document_1"
-        },
-    )
+        embed_and_store_task = PythonOperator(
+            task_id=f"embed_and_store_{i+1}",
+            python_callable=embed_and_store,
+            op_kwargs={
+                "unprocessed_chunks": check_existing_embeddings_task.output
+            },
+        )
 
-    embed_and_store_task = PythonOperator(
-        task_id="embed_and_store",
-        python_callable=embed_and_store,
-        op_kwargs={
-            "unprocessed_chunks": check_existing_embeddings_task.output
-        },
-    )
-
-    select_pdf_task >> generate_signed_url_task >> load_convert_and_export_pdf_task >> check_existing_embeddings_task >> embed_and_store_task
+        # Sequentially link tasks for this PDF
+        generate_signed_url_task >> load_convert_and_export_pdf_task >> check_existing_embeddings_task >> embed_and_store_task
+        
+        # Ensure all tasks for the previous PDF complete before starting the next PDF
+        if previous_task:
+            previous_task >> generate_signed_url_task
+        
+        # Update the previous_task to the last task of the current PDF
+        previous_task = embed_and_store_task
