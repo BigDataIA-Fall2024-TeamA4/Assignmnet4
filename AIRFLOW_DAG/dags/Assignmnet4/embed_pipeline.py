@@ -184,13 +184,20 @@ def check_existing_embeddings(docs: List[Dict[str, str]], doc_name: str) -> List
         raise
 
 def embed_and_store(unprocessed_chunks: List[Dict[str, str]]) -> None:
-    """Embed text chunks and store in Pinecone."""
+    """Embed text chunks and store in Pinecone with metadata."""
     logger.info("Starting embedding and storing process for unprocessed chunks.")
     try:
         for chunk in unprocessed_chunks:
             embedding_vector = embeddings.embed_query(chunk["content"])
-            pinecone_index.upsert([(chunk["id"], embedding_vector)])
-            logger.info(f"Stored embedding for chunk ID: {chunk['id']}")
+            # Upsert with metadata
+            pinecone_index.upsert([
+                {
+                    "id": chunk["id"],
+                    "values": embedding_vector,
+                    "metadata": {"text": chunk["content"]}
+                }
+            ])
+            logger.info(f"Stored embedding for chunk ID: {chunk['id']} with metadata.")
     except Exception as e:
         logger.error("Error during embedding and storing process: %s", e, exc_info=True)
         raise
