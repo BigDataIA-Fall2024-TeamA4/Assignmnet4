@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #3c4043;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,.3),
+                        0 1px 3px 1px rgba(60,64,67,.15);
+        }
+        .header {
+            background: #1a73e8;
+            color: white;
+            padding: 20px;
+            margin: -30px -30px 30px -30px;
+            border-radius: 8px 8px 0 0;
+        }
+        .step {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .question {
+            color: #1a73e8;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+        .answer {
+            margin-left: 20px;
+        }
+        .metadata {
+            color: #5f6368;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+        .agent-findings {
+            margin-bottom: 30px;
+        }
+        .finding {
+            margin: 10px 0;
+            padding: 10px;
+            background: #fff;
+            border-left: 4px solid #1a73e8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ title }}</h1>
+            <div class="metadata">
+                Date: {{ date }}<br>
+                Duration: {{ duration }}
+            </div>
+        </div>
+
+        <h2>Research Findings</h2>
+        {% for agent in agent_findings %}
+        <div class="agent-findings">
+            <h3>{{ agent.agent_name }}</h3>
+            {% for finding in agent.findings %}
+            <div class="finding">
+                <p>{{ finding.content }}</p>
+                {% if finding.source %}
+                <small>Source: {{ finding.source }}</small>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <h2>Research Questions and Answers</h2>
+        {% for qa in qa_pairs %}
+        <div class="step">
+            <div class="question">Q: {{ qa.question }}</div>
+            <div class="answer">A: {{ qa.answer }}</div>
+        </div>
+        {% endfor %}
+
+        {% if summary %}
+        <h2>Research Summary</h2>
+        <div class="step">
+            {{ summary }}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html> 
