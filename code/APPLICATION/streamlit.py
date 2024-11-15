@@ -192,50 +192,107 @@ def ask_question(pdf_name: str, question: str) -> Optional[str]:
         return None
  
 # Function for web search
-def web_search(query: str) -> None:
+def web_search(query):
+    if not query.strip():
+        st.error("Please enter a question to search.")
+        return
+   
+    headers = {"Authorization": f"Bearer {st.session_state.token}"}
+    response = requests.post(f"{API_URL}/research", json={
+        "query": query,
+        "pdf_name": "",
+        "task": "WEBSEARCH"
+    }, headers=headers)
+   
     try:
-        if not query.strip():
-            st.error("Please enter a question to search.")
-            return
- 
-        headers = {"Authorization": f"Bearer {st.session_state.token}"}
-        response = requests.post(f"{API_URL}/research", json={
-            "query": query,
-            "pdf_name": "",
-            "task": "WEBSEARCH"
-        }, headers=headers)
         response_data = response.json()
         if response.status_code == 200:
-            results = response_data.get("result", "")
-            st.write(results)
+            results = response_data.get("result")
+            if results:
+                st.markdown("### Web Search Results:")
+               
+                for result in results.split("\n---\n"):
+                    # Separate title, snippet, and link
+                    parts = result.split("\n")
+                    if len(parts) >= 3:
+                        title = parts[0]
+                        snippet = parts[1]
+                        link = parts[2]
+                       
+                        # Format title as bold and link it
+                        st.markdown(f"**[{title}]({link})**")
+                        # Display the snippet text
+                        st.write(snippet)
+                        # Add a horizontal line for separation between results
+                        st.markdown("---")
+            else:
+                st.warning("No results found.")
         else:
-            st.error(f"Error: {response_data.get('detail', 'Search failed.')}")
-    except Exception as e:
-        st.error("Error in web search.")
-        print(f"Error: {e}")
+            st.error(f"Error in web search: {response_data.get('detail', 'Unknown error')}")
+    except requests.exceptions.JSONDecodeError:
+        st.error("Received a non-JSON response from the server. Please check the server logs for more details.")
  
- 
-def arxiv_search(query: str) -> None:
+# Function for arxiv search
+def arxiv_search(query):
+    if not query.strip():
+        st.error("Please enter a question for the Arxiv search.")
+        return
+   
+    headers = {"Authorization": f"Bearer {st.session_state.token}"}
+    response = requests.post(f"{API_URL}/research", json={
+        "query": query,
+        "pdf_name": "",
+        "task": "ARXIV"
+    }, headers=headers)
+   
     try:
-        if not query.strip():
-            st.error("Please enter a question for the Arxiv search.")
-            return
- 
-        headers = {"Authorization": f"Bearer {st.session_state.token}"}
-        response = requests.post(f"{API_URL}/research", json={
-            "query": query,
-            "pdf_name": "",
-            "task": "ARXIV"
-        }, headers=headers)
         response_data = response.json()
         if response.status_code == 200:
-            results = response_data.get("result", "")
-            st.write(results)
+            results = response_data.get("result")
+            if results:
+                st.markdown("### Arxiv Search Results:")
+               
+                # Split results into individual entries if separated by a specific delimiter (e.g., "\n---\n")
+                for result in results.split("\n---\n"):
+                    title = authors = summary = link = ""
+                    capturing_summary = False  # Flag to start capturing multi-line summary text
+                   
+                    parts = result.split("\n")
+                    for part in parts:
+                        if part.startswith("Title:"):
+                            title = part.replace("Title: ", "").strip()
+                            capturing_summary = False  # Stop capturing summary if it was active
+                        elif part.startswith("Authors:"):
+                            authors = part.replace("Authors: ", "").strip()
+                            capturing_summary = False
+                        elif part.startswith("Summary:"):
+                            summary = part.replace("Summary: ", "").strip()
+                            capturing_summary = True  # Start capturing summary from here
+                        elif part.startswith("Link:"):
+                            link = part.replace("Link: ", "").strip()
+                            capturing_summary = False
+                        elif capturing_summary:
+                            # Append each line to summary while capturing it
+                            summary += " " + part.strip()
+                   
+                    # Display each section if available
+                    if title:
+                        st.markdown(f"**Title:** {title}")
+                    if authors:
+                        st.markdown(f"**Authors:** {authors}")
+                    if summary:
+                        st.write(summary.strip())
+                    if link:
+                        st.markdown(f"[**Link to full article**]({link})")
+                   
+                    # Add a horizontal line for separation between entries
+                    st.markdown("---")
+            else:
+                st.warning("No results found.")
         else:
-            st.error(f"Error: {response_data.get('detail', 'Search failed.')}")
-    except Exception as e:
-        st.error("Error in Arxiv search.")
-        print(f"Error: {e}")
+            st.error(f"Error in arXiv search: {response_data.get('detail', 'Unknown error')}")
+    except requests.exceptions.JSONDecodeError:
+        st.error("Received a non-JSON response from the server. Please check the server logs for more details.")
  
  
 def main() -> None:
