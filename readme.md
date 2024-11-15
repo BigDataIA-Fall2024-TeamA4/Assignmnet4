@@ -208,8 +208,8 @@ SOFTWARE.
 This project is the result of collaborative efforts from the following contributors:
 
 - **Vaishnavi Veerkumar (40%)** :Configuring Docling to process the provided dataset, extract text, and export structured information(stored in s3 bucket),Storing the parsed document vectors in Pinecone,Airflow pipeline that integrates Docling and Pinecone, Implementation of research agents- RAG, Web Search and Arxiv, Integration report generation to main code
-- 
+ 
 - **Siddharth Pawar (30%)** : Implementation of the Application using Streamlit and FastAPI, User registration and login implementation; storing user data in snowflake, Fetching pdfs for user choice and previewing them, Contributed to developing Web Search and Arxiv research agents, Codelabs documentation, Beautification of UI
-- 
+
 - **Sriram Venkatesh (30%)** : Streamlit frontend for the application, Codelabs integration for export output, PDF integration for export Q&A research questions, Diagrams code, System Architecture, Readme for the application, Integration with RAG agent, web search agent and Arxiv agent, Dockerizing the application, Creating an image for the fastapi and streamlit application, Deployment of the application on google cloud, GCP setup
 
