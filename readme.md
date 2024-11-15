@@ -2,7 +2,14 @@
 
 This project focuses on building a comprehensive research tool that automates document processing and enables efficient search and exploration of information. It includes a system to parse documents, extract meaningful data, and store it for fast retrieval. The tool allows users to select documents, conduct research through specialized agents, and receive answers to their queries. Additionally, it provides features to save research sessions and export findings in professional formats, ensuring a seamless and efficient research experience.
 
-WE ATTEST THAT WE HAVEN'T USED ANY OTHER STUDENTS' WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK
+**Codelabs Link** : [Link](https://codelabs-preview.appspot.com/?file_id=17O8djYyN_MTFYeqBNaczttgK4dczwN2ya2wCeghjpYI/edit?tab=t.0#4)
+
+(The codelabs documentation also includes the link for project demo and deployment URLS)
+
+
+**WE ATTEST THAT WE HAVEN'T USED ANY OTHER STUDENTS' WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK**
+
+
 
 ## Table of Contents
 
@@ -200,7 +207,9 @@ SOFTWARE.
 
 This project is the result of collaborative efforts from the following contributors:
 
-- **Vaishnavi Veerkumar (40%)** :
-- **Siddharth Pawar (30%)** :
+- **Vaishnavi Veerkumar (40%)** :Configuring Docling to process the provided dataset, extract text, and export structured information(stored in s3 bucket),Storing the parsed document vectors in Pinecone,Airflow pipeline that integrates Docling and Pinecone, Implementation of research agents- RAG, Web Search and Arxiv, Integration report generation to main code
+- 
+- **Siddharth Pawar (30%)** : Implementation of the Application using Streamlit and FastAPI, User registration and login implementation; storing user data in snowflake, Fetching pdfs for user choice and previewing them, Contributed to developing Web Search and Arxiv research agents, Codelabs documentation, Beautification of UI
+- 
 - **Sriram Venkatesh (30%)** :
 
