@@ -99,6 +99,8 @@ class QuestionSession(BaseModel):
 class GenerateReportRequest(BaseModel):
     sessions: List[QuestionSession]  # List of QuestionSession objects
 
+class CodelabsRequest(BaseModel):
+    sessions: List[Dict]
 
 # Helper functions for password hashing
 def hash_password(password: str) -> str:
@@ -552,7 +554,8 @@ def run_research(request: QueryRequest, token_data: dict = Depends(verify_jwt_to
         if request.task == "WEBSEARCH":
             return JSONResponse(content={"result": search_web(request.query)})
         elif request.task == "RAG":
-            return JSONResponse(content=rag_agent(request.query, request.pdf_name))
+            rag_response = rag_agent(request.query, request.pdf_name)
+            return JSONResponse(content=rag_response) 
         elif request.task == "ARXIV":
             return JSONResponse(content={"result": arxiv_agent(request.query)})
         else:
@@ -597,3 +600,33 @@ def generate_dynamic_reports(request: GenerateReportRequest,
         logging.error(f"Error generating reports: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/generate_codelabs")
+async def generate_codelabs(request: CodelabsRequest):
+    try:
+        codelabs_content = """
+        author: Research Assistant
+        summary: Research Report
+        id: dynamic-research-report
+        categories: research
+        environments: web
+        status: Published
+        """
+        
+        for idx, session in enumerate(request.sessions, 1):
+            codelabs_content += f"\n## Question {idx}\n"
+            codelabs_content += f"{session['question']}\n\n"
+            codelabs_content += "### Findings\n"
+            
+            for agent, findings in session['findings'].items():
+                codelabs_content += f"\n#### {agent}\n"
+                for finding in findings:
+                    codelabs_content += f"* {finding}\n"
+            
+            codelabs_content += f"\n### Answer\n{session.get('answer', '')}\n"
+
+        return {
+            "status": "success",
+            "codelabs_content": codelabs_content
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

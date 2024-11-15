@@ -136,6 +136,13 @@ def login_signup(username: str, password: str, signup: bool = False) -> None:
         st.error("Error in login/signup process.")
         print(f"Error: {e}")
 
+def logout():
+    """Function to handle logout"""
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.session_state.logged_in = False
+
+
 # Function for fetching PDF list from S3
 def get_pdf_list() -> List[str]:
     try:
@@ -179,10 +186,15 @@ def ask_question(pdf_name: str, question: str) -> Optional[str]:
                 "task": "RAG"
             }
             response = requests.post(f"{API_URL}/research", json=payload, headers=headers)
+            
             if response.status_code == 200:
                 result = response.json()
-                st.session_state.questions_left -= 1
-                return result.get("answer", "No answer found.")
+                if isinstance(result, dict) and "answer" in result:
+                    st.session_state.questions_left -= 1
+                    return result
+                else:
+                    st.error("Unexpected response format from server.")
+                    return None
             else:
                 st.error(f"Error: {response.json().get('detail', 'Failed to fetch answer.')}")
                 return None
@@ -190,10 +202,9 @@ def ask_question(pdf_name: str, question: str) -> Optional[str]:
             st.warning("Question limit reached.")
             return None
     except Exception as e:
-        st.error("Error processing question.")
-        print(f"Error: {e}")
+        st.error(f"Error processing question: {str(e)}")
         return None
-
+    
 # Function for web search
 def web_search(query):
     if not query.strip():
@@ -371,8 +382,70 @@ def generate_report_from_session():
     except Exception as e:
         st.error(f"Error generating report: {str(e)}")
 
+def open_in_codelabs():
+    # Check if button already exists in session state
+    if 'codelabs_button_clicked' not in st.session_state:
+        st.session_state.codelabs_button_clicked = False
+
+    if not st.session_state.session_data:
+        st.error("No research data available to generate Codelabs format.")
+        return
+    
+    try:
+        if not st.session_state.codelabs_button_clicked:
+            payload = {
+                "sessions": st.session_state.session_data
+            }
+            
+            response = requests.post(
+                f"{API_URL}/generate_codelabs",
+                json=payload,
+                headers={"Authorization": f"Bearer {st.session_state.token}"}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                codelabs_content = data['codelabs_content']
+                
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Codelabs Preview</title>
+                    <script>
+                        window.location.href = 'https://codelabs-preview.appspot.com/?markdown=' + encodeURIComponent(`{codelabs_content}`);
+                    </script>
+                </head>
+                <body>
+                    <p>Redirecting to Codelabs...</p>
+                </body>
+                </html>
+                """
+                
+                # Create download button with unique key
+                st.download_button(
+                    label="Open in Codelabs",
+                    data=html_content,
+                    file_name="codelabs_preview.html",
+                    mime="text/html",
+                    key="unique_codelabs_button",
+                    on_click=lambda: setattr(st.session_state, 'codelabs_button_clicked', True)
+                )
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+
 def main() -> None:
     try:
+        # Add logout button at the top if user is logged in
+        if st.session_state.get('logged_in', False):
+            col1, col2 = st.columns([0.9, 0.1])  # Adjust ratio as needed
+            with col2:
+                if st.button("Logout"):
+                    logout()
+                    st.rerun()
+            with col1:
+                st.write(f"Hello, **{st.session_state.get('username', 'User')}!**")
+        
         if not st.session_state.logged_in:
             st.subheader("Login or Signup")
             username = st.text_input("Username")
@@ -382,8 +455,6 @@ def main() -> None:
             if st.button("Signup"):
                 login_signup(username, password, signup=True)
         else:
-            st.write(f"Hello, **{st.session_state.get('username', 'User')}!**")
-            
             # Dropdown with user-friendly options
             task_display = st.selectbox("Choose a task", ["RAG", "Web Search", "Arxiv Agent"])
             question = st.text_input("Enter your query")
@@ -402,14 +473,16 @@ def main() -> None:
                 if response_data:
                     st.write(f"**Answer:** {response_data.get('answer', '')}")
                     add_to_session_data(question, response_data, "RAG")
+                else:
+                    st.error("Unexpected response format from the server.")
 
             elif task == "WEBSEARCH" and st.button("Submit Query", key="submit_websearch_button"):
                 response = requests.post(
-                f"{API_URL}/research",
-                json={"query": question, "pdf_name": "", "task": "WEBSEARCH"},
-                headers={"Authorization": f"Bearer {st.session_state.token}"}
+                    f"{API_URL}/research",
+                    json={"query": question, "pdf_name": "", "task": "WEBSEARCH"},
+                    headers={"Authorization": f"Bearer {st.session_state.token}"}
                 )
-            
+                
                 if response.status_code == 200:
                     response_data = response.json()
                     web_search(question)
@@ -417,22 +490,30 @@ def main() -> None:
 
             elif task == "ARXIV" and st.button("Submit Query", key="submit_arxiv_button"):
                 response = requests.post(
-                f"{API_URL}/research",
-                json={"query": question, "pdf_name": "", "task": "ARXIV"},
-                headers={"Authorization": f"Bearer {st.session_state.token}"}
+                    f"{API_URL}/research",
+                    json={"query": question, "pdf_name": "", "task": "ARXIV"},
+                    headers={"Authorization": f"Bearer {st.session_state.token}"}
                 )
-            
+                
                 if response.status_code == 200:
                     response_data = response.json()
                     arxiv_search(question)
                     add_to_session_data(question, response_data, "ARXIV")
             
-            # Generate Report Button
-            if st.button("Generate Report", key="generate_report_button"):
-                if not st.session_state.session_data:
-                    st.error("No session data to generate a report.")
-                else:
-                    generate_report_from_session()
+            # Report Generation Buttons
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Generate PDF Report"):
+                    if not st.session_state.session_data:
+                        st.error("No session data to generate a report.")
+                    else:
+                        generate_report_from_session()
+            with col2:
+                if st.button("Open in Codelabs"):
+                    if not st.session_state.session_data:
+                        st.error("No session data to generate a report.")
+                    else:
+                        open_in_codelabs()
 
     except Exception as e:
         st.error("Error running the main application.")
