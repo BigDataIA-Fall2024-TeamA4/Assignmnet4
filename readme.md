@@ -1,12 +1,13 @@
-# PDF Q&A System
+# DocuQ: Multi-Agent Research Application
 
-A sophisticated document processing and question-answering system built with modern cloud architecture, containerized with Docker, and deployed on Google Cloud Platform (GCP).
+This project focuses on building a comprehensive research tool that automates document processing and enables efficient search and exploration of information. It includes a system to parse documents, extract meaningful data, and store it for fast retrieval. The tool allows users to select documents, conduct research through specialized agents, and receive answers to their queries. Additionally, it provides features to save research sessions and export findings in professional formats, ensuring a seamless and efficient research experience.
 
 WE ATTEST THAT WE HAVEN'T USED ANY OTHER STUDENTS' WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK
 
 ## Table of Contents
 
 - [System Architecture](#system-architecture)
+- [Architecture Diagram](#architecture-diagram)
 - [Prerequisites](#prerequisites)
 - [Tech Stack](#tech-stack)
 - [Local Development Setup](#local-development-setup)
@@ -18,16 +19,18 @@ WE ATTEST THAT WE HAVEN'T USED ANY OTHER STUDENTS' WORK IN OUR ASSIGNMENT AND AB
 
 ## System Architecture
 
-The system consists of multiple layers:
-- Document Source: PDF ingestion through S3-compatible storage
-- Data Processing: Airflow-orchestrated pipeline with document processing
-- Vector Storage: Pinecone for efficient vector embeddings
-- Application Layer: FastAPI backend with AI agents and Streamlit frontend
-- Export Options: PDF and Codelabs export capabilities
+- **Data Parsing and Vectorization:** Airflow automates the pipeline to parse documents using Docling, generate embeddings, and store them in Pinecone for efficient similarity searches.
+- **Metadata and Vector Retrieval:** Metadata from parsed documents is stored in Snowflake for structured access, while Pinecone retrieves vectors for context-aware querying.
+- **User Interaction:** Streamlit offers a front-end interface where users can select documents, ask questions, and explore summaries generated in real-time by NVIDIA APIs.
+- **Multi-Agent Research:** Langraph coordinates agents like the Arxiv Agent for related research papers, the Web Search Agent for broader context, and the RAG Agent for document-based queries, ensuring users have comprehensive insights.
+- **Session Management and Feedback Storage:** User interactions, including queries and results, are stored in Snowflake, facilitating structured reporting and session reviews.
+- **Deployment:** Docker containerizes all components, ensuring seamless deployment to the cloud and consistent functionality across environments.
 
-**Architecture Diagram**
 
-[Insert Architecture Diagram]
+## Architecture Diagram
+
+![image](https://github.com/user-attachments/assets/59201ffc-bb8c-44e8-aded-46a928b0bb7e)
+
 
 ## Prerequisites
 
@@ -35,6 +38,9 @@ The system consists of multiple layers:
 - Docker and Docker Compose
 - Python 3.9+
 - GCP CLI installed and configured
+- Airflow Setup
+- Pincone Account
+- API Keys : OpenAi API Key and SerpAPI Key
 
 ## Tech Stack
 
@@ -46,9 +52,10 @@ The system consists of multiple layers:
 - **Docker**: Containerization
 - **S3-compatible Storage**: Document storage
 - **Poetry**: Dependency management
+- **Snowflake** : Storing User data
 
 ### AI Components
-- RAG (Retrieval Augmented Generation) Agent
+- RAG(Retrieval Augmented Generation)Agent
 - Arxiv Research Agent
 - Web Search Agent
 
@@ -57,7 +64,7 @@ The system consists of multiple layers:
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd pdf-qa-system
+   cd DocuQ: Multi-Agent Research Application
    ```
 
 2. **Set up environment variables**
@@ -119,24 +126,43 @@ The system consists of multiple layers:
 ## Environment Variables
 
 Create a `.env` file with the following variables:
-# API Keys
+
+### API Keys
+
+```bash
 PINECONE_API_KEY=your_pinecone_key
 OPENAI_API_KEY=your_openai_key
+SERPAPI_KEY=your_serpapi_key
+```
 
-# GCP Configuration
+### GCP Configuration
+
+```bash
 GCP_PROJECT_ID=your_project_id
 GCP_REGION=your_region
+```
 
-# Storage
-BUCKET_NAME=your_bucket_name
+### Storage
 
-# Database
+```bash
+AWS_BUCKET_NAME=your_bucket_name
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_scret_access_key
+AWS_REGION=your_aws_region
+```
+
+### Database
+
+```bash
 PINECONE_ENVIRONMENT=your_pinecone_environment
 PINECONE_INDEX_NAME=your_index_name
-
-# Application
-BACKEND_URL=http://localhost:8000
-FRONTEND_URL=http://localhost:8501
+SNOWFLAKE_ACCOUNT=your_snowflake_account_name
+SNOWFLAKE_USER=your_snowflake_username
+SNOWFLAKE_PASSWORD=your_snowflake_password
+SNOWFLAKE_DATABASE=your_snowflake_database
+SNOWFLAKE_SCHEMA=your_snowflake_schema
+SNOWFLAKE_WAREHOUSE=uour_snowflake_warehouse_name
+```
 
 ## Contributing
 
@@ -174,7 +200,7 @@ SOFTWARE.
 
 This project is the result of collaborative efforts from the following contributors:
 
-- [Contributor 1](https://github.com/contributor1)
-- [Contributor 2](https://github.com/contributor2)
-- [Contributor 3](https://github.com/contributor3)
+- **Vaishnavi Veerkumar (40%)** :
+- **Siddharth Pawar (30%)** :
+- **Sriram Venkatesh (30%)** :
 
