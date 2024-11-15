@@ -1,0 +1,23 @@
+# Use the official Python image
+FROM python:3.10-slim
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the requirements file
+COPY poetry.lock pyproject.toml ./
+
+# Install Poetry
+RUN pip install poetry
+
+# Install dependencies
+RUN poetry config virtualenvs.create false && poetry install --no-dev
+
+# Copy the rest of the application code
+COPY . .
+
+# Expose the FastAPI port
+EXPOSE 8000
+
+# Command to run the FastAPI application using uvicorn
+CMD ["uvicorn", "code.APPLICATION.app:app", "--host", "0.0.0.0", "--port", "8000"] 
