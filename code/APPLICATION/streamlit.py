@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import boto3
 import os
+import re
 from dotenv import load_dotenv
 
 # Set up environment variables and client for S3 access
@@ -25,10 +26,40 @@ if "logged_in" not in st.session_state:
 if "questions_left" not in st.session_state:
     st.session_state.questions_left = 5
 
+def is_valid_password(password: str) -> str:
+    """
+    Validate the complexity of a password.
+    """
+    if len(password) < 8:
+        return "Password should be at least 8 characters long"
+    if not re.search(r"[A-Z]", password):
+        return "Password should contain at least one uppercase letter"
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+        return "Password should contain at least one special character"
+    return None
+
 # Function for login/signup
+# Function for login/signup with password validation and username uniqueness check
 def login_signup(username, password, signup=False):
+    if signup:
+        # Check if username already exists
+        check_response = requests.get(f"{API_URL}/check_username", json={"username": username})
+        if check_response.status_code == 409:  # Assuming 409 means "username exists"
+            st.error("Username already exists. Please choose a different username.")
+            return
+        elif check_response.status_code != 200:
+            st.error("Error checking username availability.")
+            return
+
+        # Validate password complexity
+        password_error = is_valid_password(password)
+        if password_error:
+            st.error(password_error)
+            return
+    
     endpoint = "/signup" if signup else "/login"
     response = requests.post(f"{API_URL}{endpoint}", json={"username": username, "password": password})
+    
     if response.status_code == 200:
         st.session_state.logged_in = True
         st.session_state.token = response.json().get("token")
@@ -36,7 +67,10 @@ def login_signup(username, password, signup=False):
         st.session_state.questions_left = 5  # Reset question limit
         st.success("Logged in successfully!" if not signup else "Signed up and logged in successfully!")
     else:
-        st.error("Login failed!" if not signup else "Signup failed!")
+        # Display a more detailed error message based on response status
+        error_message = response.json().get("detail", "Signup failed!")
+        st.error(error_message)
+
 
 # Function for fetching PDF list from S3
 def get_pdf_list():
@@ -116,16 +150,27 @@ def web_search(query):
             st.error(f"Error in web search: {response_data.get('detail', 'Unknown error')}")
     except requests.exceptions.JSONDecodeError:
         # Print raw response text if it's not JSON
-        print("Non-JSON response received:", response.text)
+        #print("Non-JSON response received:", response.text)
         st.error("Received a non-JSON response from the server. Please check the server logs for more details.")
 
+# Function for arxiv search
+def arxiv_search(query):
+    headers = {"Authorization": f"Bearer {st.session_state.token}"}
+    response = requests.post(f"{API_URL}/research", json={
+        "query": query,
+        "pdf_name": "",
+        "task": "ARXIV"
+    }, headers=headers)
+    if response.status_code == 200:
+        return response.json().get("result")
+    else:
+        st.error("Error in arXiv search.")
 
 # Main app function
 def main():
-    st.title("PDF Q&A and Web Search")
+    st.title("PDF Q&A, Web Search, and Arxiv Agent")
 
     if not st.session_state.logged_in:
-        # Login/Signup interface
         st.subheader("Login or Signup")
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
@@ -134,31 +179,31 @@ def main():
         if st.button("Signup"):
             login_signup(username, password, signup=True)
     else:
-        # Main app after login
-        st.sidebar.subheader(f"Welcome, {st.session_state.get('username', 'User')}!")  # Access username from session_state
-        pdf_options = get_pdf_list()
-        selected_pdf = st.selectbox("Choose a PDF", pdf_options)
-        
-        st.write(f"You have {st.session_state.questions_left} questions remaining for this session.")
-        
-        # Question Input for PDF
-        question = st.text_input("Ask a question about the PDF")
-        if st.button("Submit Question"):
-            if question:
+        st.sidebar.subheader(f"Welcome, {st.session_state.get('username', 'User')}!")
+        task = st.selectbox("Choose a task", ["RAG", "Web Search", "Arxiv Agent"])
+        question = st.text_input("Enter your query")
+
+        if task == "RAG":
+            selected_pdf = st.selectbox("Choose a PDF", get_pdf_list())  # Assumes `get_pdf_list` is defined elsewhere
+            if st.button("Submit Question"):
                 answer = ask_question(selected_pdf, question)
                 if answer:
                     st.write("**Answer:**")
                     st.write(answer)
 
-        # Web Search Option
-        st.subheader("Or perform a web search")
-        web_query = st.text_input("Enter a query for web search")
-        if st.button("Search"):
-            if web_query:
-                search_results = web_search(web_query)
+        elif task == "Web Search":
+            if st.button("Submit Query"):
+                search_results = web_search(question)
                 if search_results:
                     st.write("**Web Search Results:**")
                     st.write(search_results)
+
+        elif task == "Arxiv Agent":
+            if st.button("Submit Query"):
+                arxiv_results = arxiv_search(question)
+                if arxiv_results:
+                    st.write("**Arxiv Search Results:**")
+                    st.write(arxiv_results)
 
 # Run the main app function
 if __name__ == "__main__":
