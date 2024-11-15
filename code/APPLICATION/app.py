@@ -181,7 +181,6 @@ def extract_keywords(question: str) -> set:
 
 # Web Search Agent
 def search_web(query: str, max_results: int = 10) -> str:
-    # Initialize GoogleSearch client with API key
     serpapi_params = {
         "engine": "google",
         "api_key": os.getenv("SERPAPI_API_KEY")
@@ -191,28 +190,22 @@ def search_web(query: str, max_results: int = 10) -> str:
         "q": query,
         "num": max_results
     })
-
-    # Try to fetch results and handle potential errors
+    
     try:
         response = search.get_dict()
-        print("Raw response from SerpAPI:", response)  # Debug: Print the raw response
-
-        # Check if "organic_results" is present
         if "organic_results" not in response:
             return "No search results found. Please check the query or API limits."
-
-        # Format the results
+        
         results = response["organic_results"]
         contexts = "\n---\n".join(
-            ["\n".join([x["title"], x.get("snippet", "No snippet available"), x["link"]]) for x in results]
+            [f"{x['title']}\n{x.get('snippet', 'No snippet available')}\n{x['link']}"
+             for x in results]
         )
         return contexts
-
     except Exception as e:
         print("Error in SerpAPI response:", e)
         return "Error retrieving search results."
-
-
+    
 hf_embed_model_id = "BAAI/bge-small-en-v1.5"
 hf_embedding_model = SentenceTransformer(hf_embed_model_id)
 
@@ -264,29 +257,30 @@ def arxiv_agent(query: str, max_results: int = 10) -> str:
         logging.error(f"Error in Arxiv agent: {e}")
         return "Error retrieving Arxiv results."
 
+def extract_titles_and_links(sessions):
+    titles_and_links = []
+    for idx, session in enumerate(sessions, 1):
+        for agent, findings in session.findings.items():
+            if agent in ["Web Search Agent", "Arxiv Agent"]:
+                for finding in findings:
+                    parts = finding.split("\n")
+                    if len(parts) >= 3:
+                        title = parts[0]
+                        link = parts[-1]
+                        titles_and_links.append((idx, title, link))
+    return titles_and_links
 
 def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
-    
+
     # Define styling constants
-    page_width = letter[0]
-    page_height = letter[1]
-    
-    # Define margins with proper spacing
-    margin_top = 70
-    margin_bottom = 40
-    margin_left = 50
-    margin_right = 50
-    
-    # Font settings
-    title_font = "Helvetica-Bold"
-    body_font = "Helvetica"
-    title_size = 16
-    heading_size = 14
-    content_size = 12
+    page_width, page_height = letter
+    margin_top, margin_bottom, margin_left, margin_right = 70, 40, 50, 50
+    title_font, body_font = "Helvetica-Bold", "Helvetica"
+    title_size, heading_size, content_size = 16, 12, 10
     line_height = 15
-    
+
     # Calculate usable area
     y = page_height - margin_top
     max_y = page_height - margin_top
@@ -295,17 +289,11 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
     def new_page():
         nonlocal y
         c.showPage()
-        # Reset font and color settings after new page
         c.setFont(body_font, content_size)
         c.setStrokeColorRGB(0, 0, 0)
         c.setFillColor('black')
         c.setLineWidth(1)
-        # Draw border
-        c.rect(margin_left - 10, 
-               margin_bottom - 10, 
-               page_width - (2 * margin_left) + 20, 
-               page_height - (2 * margin_bottom) + 20)
-        # Add page number
+        c.rect(margin_left - 10, margin_bottom - 10, page_width - (2 * margin_left) + 20, page_height - (2 * margin_bottom) + 20)
         page_num = str(c.getPageNumber())
         c.setFont(body_font, 10)
         c.drawString(page_width/2 - 20, margin_bottom - 20, f"Page {page_num}")
@@ -315,12 +303,7 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
     # Draw border on first page
     c.setStrokeColorRGB(0, 0, 0)
     c.setLineWidth(1)
-    c.rect(margin_left - 10, 
-           margin_bottom - 10, 
-           page_width - (2 * margin_left) + 20, 
-           page_height - (2 * margin_bottom) + 20)
-    
-    # Add page number to first page
+    c.rect(margin_left - 10, margin_bottom - 10, page_width - (2 * margin_left) + 20, page_height - (2 * margin_bottom) + 20)
     c.setFont(body_font, 10)
     c.drawString(page_width/2 - 20, margin_bottom - 20, "Page 1")
 
@@ -331,6 +314,90 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
     c.drawString((page_width - title_width) / 2, y - 20, title)
     y -= 50
 
+    # Overview Section
+    c.setFont(title_font, heading_size)
+    c.drawString(margin_left, y, "Overview")
+    y -= line_height * 2
+
+    # Calculate column widths
+    sno_width = 30
+    link_width = 200
+    title_width = page_width - margin_right - margin_left - sno_width - link_width - 20
+
+    # Draw table headers
+    c.setFont(title_font, content_size)
+    c.drawString(margin_left, y, "S.No.")
+    c.drawString(margin_left + sno_width, y, "Title")
+    c.drawString(margin_left + sno_width + title_width, y, "Link")
+    y -= line_height
+
+    # Draw horizontal line under headers
+    c.line(margin_left, y, page_width - margin_right, y)
+    y -= line_height
+
+    # Collect all titles and links
+    all_entries = []
+    for session in sessions:
+        for agent, findings in session.findings.items():
+            if agent in ["Web Search Agent", "Arxiv Agent"]:
+                for finding in findings:
+                    parts = finding.split("\n")
+                    if len(parts) >= 3:
+                        if agent == "Web Search Agent":
+                            # For Web Search, remove "Title: " and "Link: " prefixes if they exist
+                            title = parts[0].replace("Title: ", "") if parts[0].startswith("Title: ") else parts[0]
+                            link = parts[2].replace("Link: ", "") if parts[2].startswith("Link: ") else parts[2]
+                        else:  # Arxiv Agent
+                            # For Arxiv, remove "Title: " and "Link: " prefixes
+                            title = next((p.replace("Title: ", "") for p in parts if p.startswith("Title:")), "")
+                            link = next((p.replace("Link: ", "") for p in parts if p.startswith("Link:")), "")
+                        if title and link:
+                            all_entries.append((title, link))
+
+    # Draw table content
+    c.setFont(body_font, content_size)
+    for idx, (title, link) in enumerate(all_entries, 1):
+        if y < min_y + 30:  # Add buffer for multi-line entries
+            y = new_page()
+            # Redraw headers on new page
+            c.setFont(title_font, content_size)
+            c.drawString(margin_left, y, "S.No.")
+            c.drawString(margin_left + sno_width, y, "Title")
+            c.drawString(margin_left + sno_width + title_width, y, "Link")
+            y -= line_height
+            c.line(margin_left, y, page_width - margin_right, y)
+            y -= line_height
+            c.setFont(body_font, content_size)
+
+        # Draw serial number
+        c.drawString(margin_left, y, str(idx))
+
+        # Wrap and draw title
+        wrapped_title = textwrap.wrap(title, width=int(title_width/6))
+        title_height = len(wrapped_title) * line_height
+        for i, line in enumerate(wrapped_title):
+            if y - (i * line_height) < min_y:
+                y = new_page()
+                c.setFont(body_font, content_size)
+            c.drawString(margin_left + sno_width, y - (i * line_height), line)
+
+        # Draw link in blue
+        c.setFillColor('blue')
+        wrapped_link = textwrap.wrap(link, width=int(link_width/6))
+        link_height = len(wrapped_link) * line_height
+        for i, line in enumerate(wrapped_link):
+            if y - (i * line_height) < min_y:
+                y = new_page()
+                c.setFont(body_font, content_size)
+            c.drawString(margin_left + sno_width + title_width, y - (i * line_height), line)
+        c.setFillColor('black')
+
+        # Move to next row
+        y -= max(title_height, link_height) + 5
+
+    y -= line_height * 2
+
+    # Rest of the report content
     for session_idx, session in enumerate(sessions, 1):
         if y < min_y:
             y = new_page()
@@ -352,7 +419,6 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
         c.setFont(title_font, heading_size)
         c.drawString(margin_left, y, "Research Agent Used:")
         y -= line_height
-
         for agent in session.findings.keys():
             if y < min_y:
                 y = new_page()
@@ -386,7 +452,6 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
                             c.setFont(title_font, content_size)
                             c.drawString(margin_left + 40, y, f"{finding_idx}.")
                             y -= line_height
-
                             # Title
                             c.setFont(title_font, content_size)
                             wrapped_title = textwrap.wrap(parts[0], width=60)
@@ -396,7 +461,6 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
                                 c.drawString(margin_left + 60, y, line)
                                 y -= line_height
                             y -= 5
-
                             # Snippet
                             c.setFont(body_font, content_size)
                             wrapped_snippet = textwrap.wrap(parts[1], width=60)
@@ -406,7 +470,6 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
                                 c.drawString(margin_left + 60, y, line)
                                 y -= line_height
                             y -= 5
-
                             # Link
                             c.setFont(body_font, content_size)
                             c.setFillColor('blue')
@@ -418,18 +481,15 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
                                 y -= line_height
                             c.setFillColor('black')
                             y -= 15
-
                     elif agent == "Arxiv Agent":
                         if y < min_y:
                             y = new_page()
                         c.setFont(title_font, content_size)
                         c.drawString(margin_left + 40, y, f"{finding_idx}.")
                         y -= line_height
-
                         parts = finding.split("\n")
                         full_summary = ""
                         capturing_summary = False
-
                         for part in parts:
                             if part.startswith("Title:"):
                                 if y < min_y:
@@ -445,7 +505,6 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
                                     c.drawString(margin_left + 60, y, line)
                                     y -= line_height
                                 y -= 5
-
                             elif part.startswith("Authors:"):
                                 if y < min_y:
                                     y = new_page()
@@ -460,7 +519,6 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
                                     c.drawString(margin_left + 60, y, line)
                                     y -= line_height
                                 y -= 5
-
                             elif part.startswith("Summary:"):
                                 capturing_summary = True
                                 full_summary = part.replace("Summary:", "").strip()
@@ -480,7 +538,6 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
                                     c.drawString(margin_left + 60, y, line)
                                     y -= line_height
                                 y -= 5
-
                                 if y < min_y:
                                     y = new_page()
                                 c.setFont(title_font, content_size)
@@ -496,9 +553,21 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
                                     y -= line_height
                                 c.setFillColor('black')
                                 y -= 15
-
-            y -= 20
-
+                    elif agent == "RAG Agent":
+                        if y < min_y:
+                            y = new_page()
+                        c.setFont(title_font, content_size)
+                        c.drawString(margin_left + 40, y, f"{finding_idx}.")
+                        y -= line_height
+                        c.setFont(body_font, content_size)
+                        wrapped_lines = textwrap.wrap(finding, width=60)
+                        for line in wrapped_lines:
+                            if y < min_y:
+                                y = new_page()
+                            c.drawString(margin_left + 60, y, line)
+                            y -= line_height
+                        y -= 10
+                y -= 20
         y -= 30
 
     c.save()
@@ -506,24 +575,16 @@ def generate_pdf(sessions: List[QuestionSession]) -> BytesIO:
     return buffer
 
 def generate_codelabs_markdown(sessions, output_path="codelabs_output.md"):
-    """
-    Generate a Markdown report for multiple questions, findings, and answers.
-
-    Parameters:
-    - sessions: List of dictionaries, each containing 'question', 'findings', and 'answer' for each question.
-    - output_path: Path where the Markdown file will be saved.
-    """
     try:
         with open(output_path, "w") as f:
             f.write("# Dynamic Research Report\n\n")
-
-            for idx, session in enumerate(sessions):
+            for idx, session in enumerate(sessions, 1):
                 question = session["question"]
                 findings = session["findings"]
                 answer = session["answer"]
 
                 # Section title for each question
-                f.write(f"## Question {idx + 1}\n\n")
+                f.write(f"## Question {idx}\n\n")
 
                 # Question Section
                 f.write("### Question\n")
@@ -533,8 +594,33 @@ def generate_codelabs_markdown(sessions, output_path="codelabs_output.md"):
                 f.write("### Findings\n")
                 for agent, agent_findings in findings.items():
                     f.write(f"#### {agent}\n")
-                    for point in agent_findings:
-                        f.write(f"- {point}\n")
+                    if agent == "Web Search Agent":
+                        for point in agent_findings:
+                            parts = point.split("\n")
+                            if len(parts) >= 3:
+                                f.write(f"- **Title:** {parts[0]}\n")
+                                f.write(f"  **Snippet:** {parts[1]}\n")
+                                f.write(f"  **Link:** {parts[2]}\n")
+                    elif agent == "Arxiv Agent":
+                        for point in agent_findings:
+                            parts = point.split("\n")
+                            title = authors = summary = link = ""
+                            for part in parts:
+                                if part.startswith("Title:"):
+                                    title = part.replace("Title:", "").strip()
+                                elif part.startswith("Authors:"):
+                                    authors = part.replace("Authors:", "").strip()
+                                elif part.startswith("Summary:"):
+                                    summary = part.replace("Summary:", "").strip()
+                                elif part.startswith("Link:"):
+                                    link = part.replace("Link:", "").strip()
+                            f.write(f"- **Title:** {title}\n")
+                            f.write(f"  **Authors:** {authors}\n")
+                            f.write(f"  **Summary:** {summary}\n")
+                            f.write(f"  **Link:** {link}\n")
+                    elif agent == "RAG Agent":
+                        for point in agent_findings:
+                            f.write(f"- {point}\n")
                     f.write("\n")
 
                 # Answer Section

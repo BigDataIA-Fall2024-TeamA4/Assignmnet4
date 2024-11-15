@@ -206,6 +206,7 @@ def ask_question(pdf_name: str, question: str) -> Optional[str]:
         return None
     
 # Function for web search
+# Function for web search
 def web_search(query):
     if not query.strip():
         st.error("Please enter a question to search.")
@@ -233,8 +234,11 @@ def web_search(query):
                         snippet = parts[1]
                         link = parts[2]
                         
-                        # Format title as bold and link it
-                        st.markdown(f"**[{title}]({link})**")
+                        # Replace this line:
+                        # st.markdown(f"**[{title}]({link})**")
+                        # With this:
+                        st.markdown(f"**[{title}]({link})**", unsafe_allow_html=True)
+                        
                         # Display the snippet text
                         st.write(snippet)
                         # Add a horizontal line for separation between results
@@ -370,18 +374,43 @@ def generate_report_from_session():
         
         if response.status_code == 200:
             pdf_data = response.content
+            
+            # Create a unique key for the download button
+            button_key = f"download_pdf_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Use st.download_button with custom CSS class
+            st.markdown(
+                f"""
+                <style>
+                    div.stDownloadButton > button {{
+                        color: white !important;
+                        background-color: #444444 !important;
+                        border: 1px solid white !important;
+                        font-size: 18px !important;
+                        font-weight: bold !important;
+                    }}
+                    div.stDownloadButton > button:hover {{
+                        color: white !important;
+                        border-color: white !important;
+                    }}
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+            
             st.download_button(
                 label="Download Research Report (PDF)",
                 data=pdf_data,
                 file_name=f"research_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                key=button_key
             )
+            
             st.success("PDF report generated successfully!")
         else:
             st.error(f"Error generating report: {response.json().get('detail', 'Unknown error')}")
     except Exception as e:
-        st.error(f"Error generating report: {str(e)}")
-
+        st.error(f"Error generating report: {str(e)}")        
 def open_in_codelabs():
     # Check if button already exists in session state
     if 'codelabs_button_clicked' not in st.session_state:
