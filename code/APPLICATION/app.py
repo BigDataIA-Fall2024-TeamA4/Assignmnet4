@@ -14,6 +14,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from serpapi import GoogleSearch
 from sentence_transformers import SentenceTransformer
 import logging
+import arxiv
+import re
+import nltk
+from nltk.corpus import stopwords
 
 # Load environment variables
 load_dotenv()
@@ -97,7 +101,7 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Security(securi
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
-    
+     
 @app.get("/")
 async def root():
     return {"message": "Welcome to the FastAPI application!"}
@@ -135,8 +139,19 @@ def login(user: User):
     finally:
         conn.close()
 
-# Web Search Agent
+# Ensure stopwords are downloaded if using nltk
 
+nltk.download("stopwords")
+STOPWORDS = set(stopwords.words("english"))
+
+def extract_keywords(question: str) -> set:
+    # Remove punctuation and split the question into words
+    words = re.findall(r'\w+', question.lower())
+    # Filter out common stopwords and short words (e.g., "a", "an", "is")
+    keywords = {word for word in words if word not in STOPWORDS and len(word) > 2}
+    return keywords
+
+# Web Search Agent
 def search_web(query: str, max_results: int = 5) -> str:
     # Initialize GoogleSearch client with API key
     serpapi_params = {
@@ -170,7 +185,6 @@ def search_web(query: str, max_results: int = 5) -> str:
         return "Error retrieving search results."
 
 
-
 hf_embed_model_id = "BAAI/bge-small-en-v1.5"
 hf_embedding_model = SentenceTransformer(hf_embed_model_id)
 
@@ -190,15 +204,21 @@ def rag_agent(question: str, pdf_name: str) -> dict:
         if 'metadata' in match and 'text' in match['metadata']
     )
 
-    # Determine if the context is sufficiently relevant to the query
-    if not context or "healthcare" not in context.lower():  # Adjust the keyword as needed
-        # If no relevant context, use SerpAPI for web search
-        logging.info("No relevant context found in Pinecone. Falling back to web search.")
-        web_search_results = search_web(question)
+    # Extract keywords from the question
+    question_keywords = extract_keywords(question)
+    logging.info(f"Extracted keywords from question: {question_keywords}")
+
+    # Check if any of the question's keywords are in the context
+    if not context or not any(keyword in context.lower() for keyword in question_keywords):
+        # No relevant context found in the document
+        message = (
+            "The answer to your question was not found in the document. "
+            "Consider using Web Search or Arxiv Search for broader results."
+        )
         return {
-            "answer": web_search_results,
-            "source": "web_search",
-            "fallback_to_web_search": True
+            "answer": message,
+            "source": "no_document_match",
+            "suggested_search": ["web_search", "arxiv_search"]
         }
 
     # Log the final context for debugging
@@ -219,22 +239,46 @@ def rag_agent(question: str, pdf_name: str) -> dict:
         "fallback_to_web_search": False
     }
 
+def arxiv_agent(query: str, max_results: int = 5) -> str:
+    # Search for papers on arXiv based on the query
+    search = arxiv.Search(
+        query=query,
+        max_results=max_results,
+        sort_by=arxiv.SortCriterion.Relevance
+    )
+    
+    # Format the results for display
+    results = []
+    for result in search.results():
+        paper_info = f"Title: {result.title}\n" \
+                     f"Authors: {', '.join([author.name for author in result.authors])}\n" \
+                     f"Summary: {result.summary}\n" \
+                     f"Link: {result.entry_id}\n---"
+        results.append(paper_info)
+    
+    # Join all results as a single formatted string
+    return "\n\n".join(results) if results else "No relevant papers found."
+
 # Research session endpoint with JWT protection
+
 @app.post("/research")
-def run_research(request: QueryRequest, token_data: dict = Depends(verify_jwt_token)):
+def run_research(request: QueryRequest):
     logging.info(f"Received request payload: {request}")
 
     if request.task == "WEBSEARCH":
-        # Perform web search and return the result
         web_search_results = search_web(request.query)
         return JSONResponse(content={"result": web_search_results})
+    
     elif request.task == "RAG":
-        rag_response = rag_agent(request.query, request.pdf_name)
+        rag_response = rag_agent(request.query, request.pdf_name)  # Assuming `rag_agent` is defined elsewhere in your code
         return JSONResponse(content=rag_response)
+
+    elif request.task == "ARXIV":
+        arxiv_results = arxiv_agent(request.query)
+        return JSONResponse(content={"result": arxiv_results})
+    
     else:
         raise HTTPException(status_code=400, detail="Invalid task type")
-
-
 
 # Save research session with JWT protection
 @app.post("/save_session")
